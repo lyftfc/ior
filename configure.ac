@@ -398,13 +398,21 @@ AM_CONDITIONAL([USE_FINCHFS_AIORI], [test x$with_finchfs != xno])
 
 # MDKVS support
 AC_ARG_WITH([mdkvs],
-        [AS_HELP_STRING([--with-mdkvs],
+        [AS_HELP_STRING([--with-mdkvs=MDKVS_ROOT],
            [support IO with libmdkvs backend @<:@default=no@:>@])],
         [],
         [with_mdkvs=no])
 AS_IF([test "x$with_mdkvs" != xno], [
-        MDKVS_RPATH="$(realpath ..)"
+        MDKVS_ROOT=$(realpath $with_mdkvs)
+        UDEPOT_ROOT=$(cat $with_mdkvs/udepot_path.conf)
+        UDEPOT_CITYHASH="$UDEPOT_ROOT/external/cityhash/src/.libs"
+        UDEPOT_TRT="$UDEPOT_ROOT/trt/external/liburing/src"
+        MDKVS_RPATH="-L$MDKVS_ROOT -L$UDEPOT_CITYHASH -L$UDEPOT_TRT -Wl,-rpath=$MDKVS_ROOT:$UDEPOT_CITYHASH"
+        MDKVS_CFLAGS="-I$MDKVS_ROOT"
+        MDKVS_LIBS="-lstdc++ -lgflags -lrt -ldl -lz -lnuma -luuid -lmdkvs -luring -lcityhash"
         AC_SUBST(MDKVS_RPATH)
+        AC_SUBST(MDKVS_CFLAGS)
+        AC_SUBST(MDKVS_LIBS)
 ])
 AM_CONDITIONAL([USE_MDKVS_AIORI], [test x$with_mdkvs != xno])
 AM_COND_IF([USE_MDKVS_AIORI],[

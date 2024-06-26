@@ -2,8 +2,10 @@
 #include <sys/stat.h>
 #include "ior.h"
 #include "aiori.h"
+#include "mdkvs_api.h"
 
 #define		MDKVS_VERSTR	"0.1"
+#define 	OPSSD_PATH  	"/dev/nvme4n1p2"
 
 static aiori_xfer_hint_t *hints = NULL;
 
@@ -53,6 +55,7 @@ MDKVS_initialize()
 {
 	// finchfs_init(NULL);
 	INFO("MDKVS start");
+	mdkvs_init(OPSSD_PATH, 0);
 }
 
 void
@@ -60,6 +63,7 @@ MDKVS_finalize()
 {
 	// finchfs_term();
 	INFO("MDKVS finished");
+	mdkvs_deinit();
 }
 
 aiori_fd_t *

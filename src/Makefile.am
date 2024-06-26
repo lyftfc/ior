@@ -126,6 +126,9 @@ endif
 
 if USE_MDKVS_AIORI
 extraSOURCES += aiori-MDKVS.c
+extraCPPFLAGS += @MDKVS_CFLAGS@
+extraLDFLAGS += @MDKVS_RPATH@
+extraLDADD += @MDKVS_LIBS@
 endif
 
 if USE_S3_4C_AIORI

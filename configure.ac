@@ -396,6 +396,21 @@ PKG_CHECK_MODULES([FINCHFS], [finchfs],
   [with_finchfs=no])
 AM_CONDITIONAL([USE_FINCHFS_AIORI], [test x$with_finchfs != xno])
 
+# MDKVS support
+AC_ARG_WITH([mdkvs],
+        [AS_HELP_STRING([--with-mdkvs],
+           [support IO with libmdkvs backend @<:@default=no@:>@])],
+        [],
+        [with_mdkvs=no])
+AS_IF([test "x$with_mdkvs" != xno], [
+        MDKVS_RPATH="$(realpath ..)"
+        AC_SUBST(MDKVS_RPATH)
+])
+AM_CONDITIONAL([USE_MDKVS_AIORI], [test x$with_mdkvs != xno])
+AM_COND_IF([USE_MDKVS_AIORI],[
+        AC_DEFINE([USE_MDKVS_AIORI], [], [Build MDKVS backend AIORI])
+])
+
 # aws4c is needed for the S3 backend (see --with-S3, below).
 # Version 0.5.2 of aws4c is available at https://github.com/jti-lanl/aws4c.git
 # Install it something like this:

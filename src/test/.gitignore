@@ -1,0 +1,5 @@
+*.log
+*.trs
+*.o
+/testexample
+/testlib

@@ -1,5 +1,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <string.h>
+#include <errno.h>
 #include "ior.h"
 #include "aiori.h"
 #include "mdkvs_api.h"
@@ -10,18 +12,19 @@
 static aiori_xfer_hint_t *hints = NULL;
 
 struct MDKVS_File {
-	int fd;
+	char fpath[512];
 };
 
-struct mdkvs_option {
-	size_t chunk_size;
-};
+typedef struct mdkvs_option {
+	char *kvdb_path;
+	unsigned reset_db;
+} mdkvs_option_t;
 
 option_help *
 MDKVS_options(aiori_mod_opt_t **init_backend_options,
 	aiori_mod_opt_t *init_values)
 {
-	struct mdkvs_option *o = malloc(sizeof(*o));
+	mdkvs_option_t *o = malloc(sizeof(*o));
 
 	if (init_values != NULL)
 		memcpy(o, init_values, sizeof(*o));
@@ -34,8 +37,10 @@ MDKVS_options(aiori_mod_opt_t **init_backend_options,
 	*init_backend_options = (aiori_mod_opt_t *)o;
 
 	option_help h[] = {
-	    {0, "mdkvs.chunk_size", "chunk size", OPTION_FLAG, 'd',
-		    &o->chunk_size},
+		{0, "mdkvs.kvdb_path", "Path for uDepot KV database",
+			OPTION_REQUIRED_ARGUMENT, 's', &o->kvdb_path},
+	    {0, "mdkvs.reset_db", "Reset uDepot database",
+			OPTION_FLAG, 'd', &o->reset_db},
 	    LAST_OPTION
 	};
 	option_help *help = malloc(sizeof(h));
@@ -51,17 +56,17 @@ MDKVS_xfer_hints(aiori_xfer_hint_t *params)
 }
 
 void
-MDKVS_initialize()
+MDKVS_initialize(aiori_mod_opt_t * param)
 {
-	// finchfs_init(NULL);
-	INFO("MDKVS start");
-	mdkvs_init(OPSSD_PATH, 0);
+	mdkvs_option_t * opt = (mdkvs_option_t *) param;
+	INFOF("MDKVS start using %suDepot at %s",
+		opt->reset_db ? "NEW " : "", opt->kvdb_path);
+	mdkvs_init(opt->kvdb_path, opt->reset_db);
 }
 
 void
 MDKVS_finalize()
 {
-	// finchfs_term();
 	INFO("MDKVS finished");
 	mdkvs_deinit();
 }
@@ -69,39 +74,27 @@ MDKVS_finalize()
 aiori_fd_t *
 MDKVS_create(char *fn, int flags, aiori_mod_opt_t *param)
 {
-	// struct FINCHFS_File *bf;
-	// int fd;
+	struct MDKVS_File *fd;
+	if (hints->dryRun) return NULL;
 
-	// if (hints->dryRun)
-	// 	return (NULL);
-
-	// fd = finchfs_create(fn, flags, 0664);
-	// if (fd < 0)
-	// 	ERR("finchfs_create failed");
-	// bf = malloc(sizeof(*bf));
-	// bf->fd = fd;
-
-	// return ((aiori_fd_t *)bf);
-	return NULL;
+	int rv = mdkvs_create(fn);
+	if (rv < 0) ERRF("mdkvs_create(%s) failed: %s", fn, strerror(-rv));
+	fd = malloc(sizeof(*fd));
+	strncpy(fd->fpath, fn, sizeof(fd) - 1);
+	return ((aiori_fd_t *)fd);
 }
 
 aiori_fd_t *
 MDKVS_open(char *fn, int flags, aiori_mod_opt_t *param)
 {
-	// struct FINCHFS_File *bf;
-	// int fd;
+	struct MDKVS_File *fd;
+	if (hints->dryRun) return NULL;
 
-	// if (hints->dryRun)
-	// 	return (NULL);
-
-	// fd = finchfs_open(fn, flags);
-	// if (fd < 0)
-	// 	ERR("finchfs_open failed");
-	// bf = malloc(sizeof(*bf));
-	// bf->fd = fd;
-
-	// return ((aiori_fd_t *)bf);
-	return NULL;
+	int rv = mdkvs_open(fn);
+	if (rv < 0) ERRF("mdkvs_open(%s) failed: %s", fn, strerror(-rv));
+	fd = malloc(sizeof(*fd));
+	strncpy(fd->fpath, fn, sizeof(fd) - 1);
+	return ((aiori_fd_t *)fd);
 }
 
 IOR_offset_t
@@ -129,22 +122,17 @@ MDKVS_xfer(int access, aiori_fd_t *fd, IOR_size_t *buffer,
 void
 MDKVS_close(aiori_fd_t *fd, aiori_mod_opt_t *param)
 {
-	// struct FINCHFS_File *bf = (struct FINCHFS_File *)fd;
-
-	// if (hints->dryRun)
-	// 	return;
-
-	// finchfs_close(bf->fd);
-	// free(bf);
+	struct MDKVS_File *mfd = (struct MDKVS_File *)fd;
+	if (hints->dryRun) return;
+	mdkvs_close(mfd->fpath);
+	free(mfd);
 }
 
 void
 MDKVS_delete(char *fn, aiori_mod_opt_t *param)
 {
-	// if (hints->dryRun)
-	// 	return;
-
-	// finchfs_unlink(fn);
+	if (hints->dryRun) return;
+	mdkvs_delete(fn);
 }
 
 char *
@@ -156,97 +144,77 @@ MDKVS_version()
 void
 MDKVS_fsync(aiori_fd_t *fd, aiori_mod_opt_t *param)
 {
-	// struct FINCHFS_File *bf = (struct FINCHFS_File *)fd;
-
-	// if (hints->dryRun)
-	// 	return;
-
-	// finchfs_fsync(bf->fd);
+	/*
+	 * No need to do fsync, as we are not writing files 
+	 *	and inodes are persisted/synced upon write.
+	 */
 }
 
 IOR_offset_t
 MDKVS_get_file_size(aiori_mod_opt_t *param, char *fn)
 {
 	struct stat st;
-	// int r;
+	if (hints->dryRun) return 0;
 
-	// if (hints->dryRun)
-	// 	return (0);
-
-	// r = finchfs_stat(fn, &st);
-	// if (r < 0)
-	// 	return (r);
-
+	int rv = mdkvs_stat(fn, &st);
+	if (rv < 0) return rv;
 	return (st.st_size);
 }
 
 int
 MDKVS_statfs(const char *fn, ior_aiori_statfs_t *st, aiori_mod_opt_t *param)
 {
-	// if (hints->dryRun)
-	// 	return (0);
-
-	return (0);
+	// if (hints->dryRun) return (0);
+	return 0;
 }
 
 int
 MDKVS_mkdir(const char *fn, mode_t mode, aiori_mod_opt_t *param)
 {
-	// if (hints->dryRun)
-	// 	return (0);
-
-	// return (finchfs_mkdir(fn, mode));
-	return 0;
+	if (hints->dryRun) return 0;
+	int rv = mdkvs_mkdir(fn);
+	INFOF("mkdir %s: %s", fn, rv < 0 ? strerror(-rv) : "OK");
+	return rv;
 }
 
 int
 MDKVS_rename(const char *oldfile, const char *newfile, aiori_mod_opt_t * param)
 {
-	// if (hints->dryRun)
-	// 	return (0);
-	// return (finchfs_rename(oldfile, newfile));
-	return 0;
+	if (hints->dryRun) return (0);
+	int rv = mdkvs_rename(oldfile, newfile);
+	if (rv == -EISDIR)
+		ERR("Renaming dir is not implemented.");
+	return rv;
 }
 
 int
 MDKVS_rmdir(const char *fn, aiori_mod_opt_t *param)
 {
-	// if (hints->dryRun)
-	// 	return (0);
-
-	// return (finchfs_rmdir(fn));
-	return 0;
+	if (hints->dryRun) return 0;
+	int rv = mdkvs_rmdir(fn);
+	INFOF("rmdir %s: %s", fn, rv < 0 ? strerror(-rv) : "OK");
+	return rv;
 }
 
 int
 MDKVS_access(const char *fn, int mode, aiori_mod_opt_t *param)
 {
-	// struct stat sb;
-
-	// if (hints->dryRun)
-	// 	return (0);
-
-	// return (finchfs_stat(fn, &sb));
-	return 0;
+	struct stat sb;
+	if (hints->dryRun) return 0;
+	return (mdkvs_stat(fn, &sb));
 }
 
 int
 MDKVS_stat(const char *fn, struct stat *buf, aiori_mod_opt_t *param)
 {
-	// if (hints->dryRun)
-	// 	return (0);
-
-	// return (finchfs_stat(fn, buf));
-	return 0;
+	if (hints->dryRun) return 0;
+	return (mdkvs_stat(fn, buf));
 }
 
 void
 MDKVS_sync(aiori_mod_opt_t *param)
 {
-	if (hints->dryRun)
-		return;
-
-	return;
+	if (hints->dryRun) return;
 }
 
 ior_aiori_t mdkvs_aiori = {
